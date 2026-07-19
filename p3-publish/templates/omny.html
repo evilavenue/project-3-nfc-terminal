@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evil Avenue — Project 3 · NFC</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
+* { margin:0; padding:0; box-sizing:border-box; }
+:root { --black:#080808; --red:#cc2936; --green:#17b978; --yellow:#d4a82c; --blue:#3a7bd5; --white:#e8e8e8; --panel:#0f0f0f; --border:#222; }
+html,body { height:100%; overflow:hidden; font-family:'Space Mono',monospace; background:var(--black); color:var(--white); }
+#doors { position:fixed; inset:0; z-index:100; display:flex; }
+.door { width:50%; height:100%; background:linear-gradient(135deg,#2a2a2a,#1a1a1a 50%,#222); transition:transform 1.6s cubic-bezier(.7,0,.3,1); border:2px solid #333; position:relative; }
+.door::before { content:''; position:absolute; top:12%; left:15%; right:15%; height:42%; background:rgba(120,160,180,.08); border:3px solid #3a3a3a; }
+#doors.open .door.left { transform:translateX(-100%); }
+#doors.open .door.right { transform:translateX(100%); }
+#doors.hidden { display:none; }
+.door-label { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#555; font-size:11px; letter-spacing:.3em; text-transform:uppercase; white-space:nowrap; }
+.door.right .door-label { color:var(--red); }
+.tabs { position:fixed; top:0; left:0; right:0; height:52px; display:flex; z-index:20; background:var(--black); border-bottom:1px solid var(--border); }
+.tab { flex:1; display:flex; align-items:center; justify-content:center; font-size:11px; letter-spacing:.25em; text-transform:uppercase; color:#666; cursor:pointer; transition:all .2s; border-bottom:2px solid transparent; }
+.tab.active { color:var(--white); border-bottom-color:var(--red); }
+.brandbar { position:fixed; top:52px; left:0; right:0; text-align:center; font-size:9px; letter-spacing:.4em; color:var(--red); text-transform:uppercase; padding:6px 0; z-index:19; }
+.view { position:fixed; inset:0; top:78px; display:none; flex-direction:column; align-items:center; justify-content:center; padding:20px; text-align:center; }
+.view.active { display:flex; }
+#terminal { transition:background .3s; }
+#terminal.approved,#terminal.transfer { background:radial-gradient(circle at center,#0d3b2a,var(--black) 70%); }
+#terminal.insufficient { background:radial-gradient(circle at center,#3b0d12,var(--black) 70%); }
+#terminal.retry { background:radial-gradient(circle at center,#3b330d,var(--black) 70%); }
+#terminal.unknown,#terminal.wrongcard { background:radial-gradient(circle at center,#1a1a1a,var(--black) 70%); }
+.nfc-ring { width:120px; height:120px; border-radius:50%; border:3px solid #333; display:flex; align-items:center; justify-content:center; margin-bottom:32px; position:relative; transition:all .3s; }
+.nfc-ring::before { content:''; position:absolute; width:100%; height:100%; border-radius:50%; border:2px solid #222; animation:ripple 2s infinite ease-out; }
+@keyframes ripple { 0%{transform:scale(1);opacity:.6;} 100%{transform:scale(1.5);opacity:0;} }
+.nfc-icon { font-size:40px; color:#444; transition:color .3s; }
+#terminal.approved .nfc-ring,#terminal.transfer .nfc-ring { border-color:var(--green); }
+#terminal.approved .nfc-icon,#terminal.transfer .nfc-icon { color:var(--green); }
+#terminal.insufficient .nfc-ring { border-color:var(--red); }
+#terminal.insufficient .nfc-icon { color:var(--red); }
+#terminal.retry .nfc-ring { border-color:var(--yellow); }
+#terminal.retry .nfc-icon { color:var(--yellow); }
+#terminal.unknown .nfc-ring,#terminal.wrongcard .nfc-ring { border-color:var(--white); }
+#terminal.unknown .nfc-icon,#terminal.wrongcard .nfc-icon { color:var(--white); }
+.status-big { font-size:clamp(32px,9vw,72px); font-weight:700; letter-spacing:.04em; min-height:1.2em; transition:color .3s; }
+#terminal.approved .status-big,#terminal.transfer .status-big { color:var(--green); }
+#terminal.insufficient .status-big { color:var(--red); }
+#terminal.retry .status-big { color:var(--yellow); }
+.msg { font-size:15px; color:#888; margin-top:14px; letter-spacing:.08em; min-height:1.4em; }
+.bal { font-size:13px; color:#666; margin-top:8px; letter-spacing:.1em; }
+.blink { animation:bl .4s ease 3; } @keyframes bl {50%{opacity:.3;}}
+#reload { justify-content:flex-start; padding-top:20px; }
+.kiosk-screen { width:100%; max-width:460px; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:22px; margin-bottom:16px; min-height:96px; display:flex; flex-direction:column; align-items:center; justify-content:center; transition:all .3s; }
+.kiosk-screen.step { border-color:var(--yellow); }
+.kiosk-screen.authorized { border-color:var(--green); }
+.kiosk-screen.reloaded,.kiosk-screen.balance { border-color:var(--green); background:radial-gradient(circle at center,#0d3b2a,var(--panel) 80%); }
+.kiosk-screen.zero { border-color:var(--red); background:radial-gradient(circle at center,#3b0d12,var(--panel) 80%); }
+.kiosk-screen.wrongcard { border-color:var(--red); }
+.kiosk-status { font-size:22px; font-weight:700; letter-spacing:.03em; }
+.kiosk-sub { font-size:12px; color:#888; margin-top:6px; letter-spacing:.08em; }
+.factors { display:flex; gap:16px; margin-top:12px; }
+.factor { font-size:9px; letter-spacing:.15em; color:#555; text-transform:uppercase; display:flex; align-items:center; gap:5px; }
+.factor .fdot { width:8px; height:8px; border-radius:50%; border:1px solid #555; }
+.factor.done { color:var(--green); }
+.factor.done .fdot { background:var(--green); border-color:var(--green); }
+.section-label { font-size:9px; letter-spacing:.3em; color:#666; text-transform:uppercase; margin:4px 0 8px; align-self:flex-start; }
+.amounts { width:100%; max-width:460px; display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px; }
+.amt { padding:15px 0; background:var(--panel); border:1px solid var(--border); border-radius:6px; color:var(--white); font-family:inherit; font-size:15px; font-weight:700; cursor:pointer; transition:all .15s; }
+.amt:hover { border-color:var(--red); }
+.amt.selected { border-color:var(--green); color:var(--green); background:rgba(23,185,120,.08); }
+.amt.other { grid-column:span 4; font-size:12px; letter-spacing:.15em; color:#888; }
+.pinrow { width:100%; max-width:460px; display:flex; gap:8px; margin-bottom:10px; }
+.pin-input { flex:1; padding:12px; background:var(--panel); border:1px solid var(--border); border-radius:6px; color:var(--white); font-family:inherit; font-size:16px; text-align:center; letter-spacing:.5em; }
+.pin-btn { padding:12px 18px; background:var(--red); border:none; border-radius:6px; color:#fff; font-family:inherit; font-size:12px; letter-spacing:.15em; cursor:pointer; text-transform:uppercase; }
+.check-btn { width:100%; max-width:460px; padding:13px; background:transparent; border:1px solid var(--blue); border-radius:6px; color:var(--blue); font-family:inherit; font-size:12px; letter-spacing:.2em; cursor:pointer; text-transform:uppercase; transition:all .15s; }
+.check-btn:hover { background:rgba(58,123,213,.1); }
+.hint { font-size:11px; color:#555; letter-spacing:.08em; margin-top:10px; }
+.meta { position:fixed; bottom:16px; left:0; right:0; text-align:center; font-size:9px; color:#444; letter-spacing:.2em; }
+.dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:#444; margin-right:6px; vertical-align:middle; }
+.dot.live { background:var(--green); }
+</style>
+</head>
+<body>
+<div id="doors"><div class="door left"><span class="door-label">Evil Avenue</span></div><div class="door right"><span class="door-label">Project 3 &middot; NFC</span></div></div>
+<div class="tabs">
+  <div class="tab active" data-mode="terminal" id="tab-terminal">Terminal</div>
+  <div class="tab" data-mode="reload" id="tab-reload">Reload</div>
+</div>
+<div class="brandbar">Evil Avenue &middot; Project 3 &middot; NFC</div>
+<div class="view active" id="terminal">
+  <div class="nfc-ring"><div class="nfc-icon">&#9672;</div></div>
+  <div class="status-big" id="t-status">TAP CARD</div>
+  <div class="msg" id="t-msg">Present your fare card</div>
+  <div class="bal" id="t-bal"></div>
+</div>
+<div class="view" id="reload">
+  <div class="kiosk-screen" id="k-screen">
+    <div class="kiosk-status" id="k-status">SELECT AMOUNT</div>
+    <div class="kiosk-sub" id="k-sub">Choose an amount to add</div>
+    <div class="factors" id="factors" style="display:none;">
+      <div class="factor" id="f-card"><span class="fdot"></span>Card</div>
+      <div class="factor" id="f-pin"><span class="fdot"></span>PIN</div>
+    </div>
+  </div>
+  <div class="section-label">Amount</div>
+  <div class="amounts" id="amounts"></div>
+  <div class="section-label">Authorize · Tap Coco Bank Card + Enter PIN</div>
+  <div class="pinrow">
+    <input class="pin-input" id="pin" type="password" inputmode="numeric" maxlength="4" placeholder="PIN">
+    <button class="pin-btn" id="pinbtn">Enter</button>
+  </div>
+  <button class="check-btn" id="checkbtn">Check Card Balance</button>
+  <div class="hint" id="r-hint">Two-factor: tap Coco Bank card AND enter PIN to authorize a top-up.</div>
+</div>
+<div class="meta"><span class="dot" id="dot"></span><span id="conn">connecting...</span></div>
+<script>
+window.addEventListener('load',()=>{
+  setTimeout(()=>document.getElementById('doors').classList.add('open'),600);
+  setTimeout(()=>document.getElementById('doors').classList.add('hidden'),2400);
+  buildAmounts();
+});
+const TSTATES=['approved','transfer','insufficient','retry','unknown','wrongcard'];
+let selectedAmount=null;
+let cardVerified=false, pinVerified=false;
+
+document.querySelectorAll('.tab').forEach(t=>{
+  t.onclick=()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    const m=t.dataset.mode;
+    document.getElementById('terminal').classList.toggle('active',m==='terminal');
+    document.getElementById('reload').classList.toggle('active',m==='reload');
+    fetch('/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
+    resetReload();
+  };
+});
+function buildAmounts(){
+  const box=document.getElementById('amounts');
+  for(let d=3; d<=24; d+=3){
+    const b=document.createElement('button');
+    b.className='amt'; b.textContent='$'+d; b.dataset.cents=d*100;
+    b.onclick=()=>selectAmount(b); box.appendChild(b);
+  }
+  const other=document.createElement('button');
+  other.className='amt other'; other.textContent='OTHER AMOUNT';
+  other.onclick=()=>{
+    const v=prompt('Enter amount in dollars (max $60):');
+    if(v===null) return;
+    const num=parseFloat(v);
+    if(isNaN(num) || num<=0){ alert('Please enter a valid amount.'); return; }
+    if(num>60){ alert('Maximum reload is $60.00.'); return; }
+    document.querySelectorAll('.amt').forEach(x=>x.classList.remove('selected'));
+    other.classList.add('selected'); selectedAmount=Math.round(num*100);
+    other.textContent='$'+num.toFixed(2); pushAmount();
+  };
+  box.appendChild(other);
+}
+function selectAmount(btn){
+  document.querySelectorAll('.amt').forEach(x=>x.classList.remove('selected'));
+  btn.classList.add('selected'); selectedAmount=+btn.dataset.cents; pushAmount();
+}
+function updateScreen(){
+  const scr=document.getElementById('k-screen');
+  document.getElementById('factors').style.display='flex';
+  document.getElementById('f-card').classList.toggle('done',cardVerified);
+  document.getElementById('f-pin').classList.toggle('done',pinVerified);
+  if(cardVerified && pinVerified){
+    scr.className='kiosk-screen authorized';
+    document.getElementById('k-status').textContent='AUTHORIZED';
+    document.getElementById('k-sub').textContent='Tap a fare card to load $'+(selectedAmount/100).toFixed(2);
+  } else {
+    scr.className='kiosk-screen step';
+    document.getElementById('k-status').textContent='AUTHORIZE';
+    let need=[];
+    if(!cardVerified) need.push('tap Coco Bank card');
+    if(!pinVerified) need.push('enter PIN');
+    document.getElementById('k-sub').textContent='Adding $'+(selectedAmount/100).toFixed(2)+' — '+need.join(' + ');
+  }
+}
+function pushAmount(){
+  cardVerified=false; pinVerified=false;
+  fetch('/reload/amount',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount:selectedAmount})})
+    .then(r=>r.json()).then(d=>{
+      if(d.error==='over_limit'){
+        alert('Maximum reload is $'+(d.max/100).toFixed(2));
+        resetReload();
+      }
+    });
+  updateScreen();
+}
+function resetReload(){
+  selectedAmount=null; cardVerified=false; pinVerified=false;
+  document.querySelectorAll('.amt').forEach(x=>x.classList.remove('selected'));
+  document.getElementById('k-screen').className='kiosk-screen';
+  document.getElementById('k-status').textContent='SELECT AMOUNT';
+  document.getElementById('k-sub').textContent='Choose an amount to add';
+  document.getElementById('factors').style.display='none';
+  document.getElementById('pin').value='';
+}
+document.getElementById('pinbtn').onclick=()=>{
+  if(selectedAmount===null){ alert('Select an amount first'); return; }
+  const pin=document.getElementById('pin').value;
+  fetch('/reload/pin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:pin})})
+    .then(r=>r.json()).then(d=>{
+      if(d.pin_ok){ pinVerified=true; } 
+      else { document.getElementById('k-sub').textContent='Wrong PIN — try again'; }
+      document.getElementById('pin').value='';
+      updateScreen();
+    });
+};
+document.getElementById('checkbtn').onclick=()=>{
+  fetch('/reload/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  selectedAmount=null; cardVerified=false; pinVerified=false;
+  document.querySelectorAll('.amt').forEach(x=>x.classList.remove('selected'));
+  document.getElementById('factors').style.display='none';
+  document.getElementById('k-screen').className='kiosk-screen';
+  document.getElementById('k-status').textContent='CHECK BALANCE';
+  document.getElementById('k-sub').textContent='Tap any card to see its balance';
+};
+let tReset=null;
+function showRide(ev){
+  clearTimeout(tReset);
+  const t=document.getElementById('terminal');
+  t.classList.remove(...TSTATES);
+  if(TSTATES.includes(ev.result)) t.classList.add(ev.result);
+  const s=document.getElementById('t-status');
+  s.textContent=ev.status; document.getElementById('t-msg').textContent=ev.message;
+  document.getElementById('t-bal').textContent=ev.balance_str?('Balance '+ev.balance_str):'';
+  s.classList.remove('blink'); void s.offsetWidth; s.classList.add('blink');
+  tReset=setTimeout(()=>{
+    t.classList.remove(...TSTATES);
+    s.textContent='TAP CARD'; document.getElementById('t-msg').textContent='Present your fare card';
+    document.getElementById('t-bal').textContent='';
+  },2000);
+}
+let rReset=null;
+function showReload(ev){
+  clearTimeout(rReset);
+  const scr=document.getElementById('k-screen');
+  if(ev.result==='cardok'){
+    cardVerified=true; updateScreen(); return;
+  }
+  if(ev.result==='reloaded'){
+    scr.className='kiosk-screen reloaded';
+    document.getElementById('factors').style.display='none';
+    document.getElementById('k-status').textContent='RELOADED';
+    document.getElementById('k-sub').textContent=ev.message+' — new balance '+ev.balance_str;
+    rReset=setTimeout(resetReload,2000); return;
+  }
+  if(ev.result==='balance'){
+    const zero=(ev.balance===0);
+    scr.className='kiosk-screen '+(zero?'zero':'balance');
+    document.getElementById('factors').style.display='none';
+    document.getElementById('k-status').textContent=ev.balance_str||'—';
+    document.getElementById('k-sub').textContent=zero?'Empty - reload to ride':ev.message;
+    rReset=setTimeout(resetReload,2000); return;
+  }
+  if(ev.result==='wrongcard'){
+    scr.className='kiosk-screen wrongcard';
+    document.getElementById('k-status').textContent='WRONG CARD';
+    document.getElementById('k-sub').textContent=ev.message;
+    // auto-reset back to the authorize prompt so it doesn't latch
+    clearTimeout(rReset);
+    rReset=setTimeout(()=>{
+      if(selectedAmount!==null){ updateScreen(); }
+      else { resetReload(); }
+    }, 1800);
+    return;
+  }
+  if(ev.result==='unknown'){
+    scr.className='kiosk-screen wrongcard';
+    document.getElementById('k-status').textContent='UNKNOWN';
+    document.getElementById('k-sub').textContent='Card Not Recognized'; return;
+  }
+  if(ev.result==='retry'){ document.getElementById('k-sub').textContent='Read error — try again'; }
+}
+const src=new EventSource('/stream');
+src.onopen=()=>{document.getElementById('dot').classList.add('live');document.getElementById('conn').textContent='system online';};
+src.onmessage=(e)=>{
+  const ev=JSON.parse(e.data);
+  if(ev.result==='ready'){document.getElementById('dot').classList.add('live');document.getElementById('conn').textContent='system online';return;}
+  const activeMode=document.getElementById('reload').classList.contains('active')?'reload':'terminal';
+  if(activeMode==='terminal') showRide(ev); else showReload(ev);
+};
+src.onerror=()=>{document.getElementById('dot').classList.remove('live');document.getElementById('conn').textContent='reconnecting...';};
+</script>
+</body>
+</html>
