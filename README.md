@@ -1,14 +1,17 @@
-<!-- IMAGE: hero shot — the train with headlights lit, card on the reader.
-     ![Evil Avenue P3](images/hero.jpg) -->
-
 # Evil Avenue · Project 3
 ### An encrypted NFC fare terminal built on a Raspberry Pi and PN532, using MIFARE DESFire EV3 smartcards.
+
+![Demo setup](Demo%20Setup.jpeg)
 
 An OMNY-style transit payment system. Tap a card and it authenticates cryptographically, reads the balance stored on the card, charges the fare, and flashes the train's headlights green. Tap a card it doesn't have the key for and it rejects it.
 
 Two modes share one backend. **Terminal** charges $3.00 (the 2026 MTA base fare) and gives one free transfer per fare, matching the real MTA rule. **Reload kiosk** tops up a card, requiring both the Coco Bank card and a PIN.
 
 Built June–July 2026. Everything from the SPI wiring to the DESFire command bytes to the enclosures was built from scratch.
+
+### ▶ [Watch the demo](https://youtu.be/GjvgxuKSTqs)
+
+Tapping to ride, a free transfer, denial on insufficient balance, and the reload kiosk topping up a card with two-factor authorization.
 
 ---
 
@@ -25,8 +28,7 @@ Built June–July 2026. Everything from the SPI wiring to the DESFire command by
 
 Three zones on one stand: reader up front where you tap, train elevated in the middle with headlights facing forward, Pi at the rear in its own enclosure.
 
-<!-- IMAGE: the full rig side-on, powered.
-     ![Full build](images/full-build.jpg) -->
+![Project model](Project%20model.jpeg)
 
 ---
 
@@ -60,7 +62,7 @@ One LED joint needed reflowing after mounting. Worth knowing: if only one headli
 
 **Talking to the card at all.** The PN532 will forward raw DESFire APDUs if you wrap them correctly:
 
-```python
+```
 pn532.call_function(0x40, params=[0x01, cmd] + data)
 ```
 
@@ -78,6 +80,7 @@ Status went from `0x1E` to `0x00` the moment the CRC was corrected. All three ca
 **The same lesson solved random UID.** Enabling random UID uses `SetConfiguration` (`0x5C`), authenticated to the card master key, which is still factory DES — so it's a DES-encrypted path, not AES. The first attempt returned `0x1E` again. The fix was the same: **IV = zeros**. That flip is permanent and irreversible, so it was only ever done on a card designated for it.
 
 **Session key derivation** for legacy AES auth (`0xAA`):
+
 ```
 session_key = RndA[0:4] + RndB[0:4] + RndA[12:16] + RndB[12:16]
 ```
@@ -92,8 +95,9 @@ The easy fix was to call it a demo card and move on. The correct fix was to stop
 
 Now every card carries a card ID in a protected data file inside its application, readable only after authentication. The terminal identifies by that. The random-UID card works completely — including transfers — because the UID was never what mattered.
 
-<!-- IMAGE: watch_uid output — random card cycling UIDs, static card fixed.
-     ![Random UID](images/random-uid.jpg) -->
+![Random UID — the same card returning a different UID on every tap, while the static card stays fixed](random-uid.png)
+
+Above: one card configured for random UID returns a different `08…` UID on every tap. The terminal still identifies it correctly and rides it, because identity comes from authenticated internal data, not the UID.
 
 ## Reliability
 
@@ -143,6 +147,8 @@ The original plan was a Gridfinity-based exoskeleton — a modular baseplate hol
 
 It got cut. A phone stand held everything at the right height, and the enclosure work that actually mattered was the two housings. Dropping it was the right call — it was a real design project that didn't make the machine work any better.
 
+![Project layout](Project%20Layout.jpeg)
+
 ---
 
 ## Security model
@@ -158,23 +164,30 @@ This is EMV-*style* — it borrows the architecture of card payment systems, imp
 
 It is **not** real EMV. There's no issuer PKI, no application cryptograms, and no certification. "EMV-inspired" is the accurate label.
 
-Known limits, stated plainly: the card master key is still the factory default — deliberately, since that's what allows the random UID configuration. Fare operations run in plain communication mode rather than encrypted. The HMAC signing key lives in source. Transaction state is in memory and resets on restart. There's no transaction counter; rollback protection relies on the fact that writing to a card requires the key.
+Known limits, stated plainly: the card master key is still the factory default — deliberately, since that's what allows the random UID configuration. Fare operations run in plain communication mode rather than encrypted. The HMAC signing key lives in source. Transaction state is in memory and resets on restart. The web UI runs over HTTP on the local network, so the PIN isn't the security boundary — the card key is. There's no transaction counter; rollback protection relies on the fact that writing to a card requires the key.
 
 ---
 
 ## Demo
 
-Tap a card — the fare comes off and the headlights go green. Tap again within the window — free transfer, balance unchanged. Reload it with the bank card and PIN. Tap a foreign card — rejected at the auth gate. Tap the random-UID card — different UID every time, rides fine. Edit the transaction log — the verifier catches the exact line.
+**[▶ Watch the full demo](https://youtu.be/GjvgxuKSTqs)**
 
-The reload cap is $60 in the UI. Sending a raw request that skips the browser entirely still gets rejected, because the cap is enforced server-side.
+The video runs the whole system end to end:
+
+- Tap the static card — approved, $3.00 comes off. Tap again inside the two-minute window — free transfer, no charge. Tap a third time with the balance gone — denied. The train's headlights sync with the screen and blink green or red with each result.
+- Tap the random-UID card, which is empty — denied for no balance.
+- Move to the reload kiosk and top it up: select the $3 preset, enter the Coco Bank PIN, then tap the Coco Bank card — two-factor authorization. Tap the random-UID card to load the fare, then check its balance.
+- Back to the terminal — tap the now-loaded random-UID card and run the same ride-transfer-deny cycle it started with.
+
+Not shown in the video, but part of the build: tapping a foreign card the terminal has no key for is rejected at the auth gate, and editing the transaction log is caught by the verifier at the exact line. The reload cap is enforced server-side — a raw request that skips the browser entirely is still rejected.
+
+---
+
+## Source
+
+Code is in [`p3-publish/`](p3-publish/). Keys, the HMAC signing secret, and the PIN are redacted — replace the placeholders with your own before running. The full build write-up, every problem and fix, is in [BUILD-LOG.md](BUILD-LOG.md).
 
 ---
 
 *Evil Avenue · New York City*
 **[evilavenue.com](https://evilavenue.com)**
-
-<!-- Additional images worth adding:
-     - the two 3D-printed enclosures
-     - close-up of the PN532 wiring
-     - reload kiosk UI with the two factor indicators
-     - the tamper check catching a modified log -->
